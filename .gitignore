@@ -57,3 +57,16 @@ htmlcov/
 .vscode/
 .idea/
 *.swp
+
+
+# ------------------------------------------------------------
+# Node / frontend dependencies and build output
+# ------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+build/
+.cache/

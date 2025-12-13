@@ -1,0 +1,135 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+.modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px;
+  animation: slideUp 0.4s ease;
+}
+
+.pulseRing {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120px;
+  height: 120px;
+  border: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  animation: ripple 2s infinite ease-out;
+  pointer-events: none;
+}
+
+.avatar {
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-gradient);
+  color: var(--bg-primary);
+  font-size: 36px;
+  font-weight: 600;
+  border-radius: 50%;
+  margin-bottom: 24px;
+  z-index: 1;
+  box-shadow: 0 0 60px rgba(0, 255, 136, 0.3);
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+.caller {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 40px;
+}
+
+.actions {
+  display: flex;
+  gap: 32px;
+}
+
+.actionBtn {
+  width: 72px;
+  height: 72px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.actionBtn:hover {
+  transform: scale(1.1);
+}
+
+.actionBtn:active {
+  transform: scale(0.95);
+}
+
+.reject {
+  background: var(--danger);
+  color: white;
+}
+
+.reject:hover {
+  box-shadow: 0 0 30px rgba(255, 68, 102, 0.5);
+}
+
+.accept {
+  background: var(--success);
+  color: var(--bg-primary);
+}
+
+.accept:hover {
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.5);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+  }
+}

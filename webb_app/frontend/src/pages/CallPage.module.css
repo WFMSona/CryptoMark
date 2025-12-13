@@ -1,0 +1,264 @@
+.page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Animated background */
+.background {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+}
+
+.wave1, .wave2, .wave3 {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.1;
+}
+
+.wave1 {
+  width: 800px;
+  height: 800px;
+  background: var(--accent-primary);
+  top: -200px;
+  left: -200px;
+  filter: blur(100px);
+  animation: float 20s infinite ease-in-out;
+}
+
+.wave2 {
+  width: 600px;
+  height: 600px;
+  background: var(--accent-secondary);
+  bottom: -100px;
+  right: -100px;
+  filter: blur(80px);
+  animation: float 15s infinite ease-in-out reverse;
+}
+
+.wave3 {
+  width: 400px;
+  height: 400px;
+  background: var(--accent-primary);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  filter: blur(60px);
+  animation: pulse 4s infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(50px, 30px); }
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.recordingBadge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 68, 102, 0.15);
+  border: 1px solid rgba(255, 68, 102, 0.3);
+  border-radius: var(--radius-xl);
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.recordingDot {
+  width: 8px;
+  height: 8px;
+  background: var(--danger);
+  border-radius: 50%;
+  animation: pulse 1s infinite;
+}
+
+/* Main content */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 24px;
+  gap: 40px;
+}
+
+.callInfo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.avatar {
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 48px;
+  font-weight: 600;
+  border-radius: 50%;
+  position: relative;
+  margin-bottom: 24px;
+  transition: all 0.3s ease;
+}
+
+.avatar.connected {
+  background: var(--accent-gradient);
+  color: var(--bg-primary);
+  box-shadow: 0 0 60px rgba(0, 255, 136, 0.3);
+}
+
+.ring1, .ring2 {
+  position: absolute;
+  inset: -10px;
+  border: 2px solid var(--accent-primary);
+  border-radius: 50%;
+  animation: ripple 2s infinite ease-out;
+}
+
+.ring2 {
+  animation-delay: 0.5s;
+}
+
+.username {
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.status {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+/* Detection panel */
+.detection {
+  width: 100%;
+  max-width: 400px;
+  animation: slideUp 0.4s ease;
+}
+
+/* Controls */
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 32px 24px 48px;
+}
+
+.controlBtn {
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.controlBtn:hover {
+  background: var(--bg-elevated);
+  transform: scale(1.05);
+}
+
+.controlBtn:active {
+  transform: scale(0.95);
+}
+
+.controlBtn.active {
+  background: var(--warning);
+  border-color: var(--warning);
+  color: var(--bg-primary);
+}
+
+.recordBtn {
+  background: var(--bg-elevated);
+}
+
+.recordBtn:hover {
+  background: rgba(255, 68, 102, 0.2);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.recordBtn.recording {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: white;
+  animation: recordPulse 1.5s infinite;
+}
+
+.endBtn {
+  width: 72px;
+  height: 72px;
+  background: var(--danger);
+  border-color: var(--danger);
+  color: white;
+}
+
+.endBtn:hover {
+  background: #ff5577;
+  box-shadow: 0 0 30px rgba(255, 68, 102, 0.4);
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes recordPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 102, 0.4); }
+  50% { box-shadow: 0 0 0 10px rgba(255, 68, 102, 0); }
+}
