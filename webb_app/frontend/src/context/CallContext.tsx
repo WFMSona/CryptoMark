@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { wsService } from '../services/websocket';
 import { webrtcService } from '../services/webrtc';
 import { useAuth } from './AuthContext';
@@ -32,6 +32,28 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [detectionResults, setDetectionResults] = useState<DetectionResult[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+
+  const ringtoneRef = useRef<HTMLAudioElement | null>(null);
+
+  // Initialize ringtone
+  useEffect(() => {
+    ringtoneRef.current = new Audio('/sounds/ringtone.mp3');
+    ringtoneRef.current.loop = true;
+  }, []);
+
+  // Handle ringtone playback
+  useEffect(() => {
+    if (incomingCall) {
+      ringtoneRef.current?.play().catch(err => {
+        console.warn('[Call] Failed to play ringtone:', err);
+      });
+    } else {
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current.currentTime = 0;
+      }
+    }
+  }, [incomingCall]);
 
   // Handle WebSocket messages
   useEffect(() => {
@@ -125,13 +147,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const initiateCall = useCallback(async (targetUser: User) => {
     try {
       console.log('[Call] Initiating call to:', targetUser.username, targetUser.id);
-      
+
       const stream = await webrtcService.initialize();
       setLocalStream(stream);
 
       const callId = `call_${Date.now()}`;
       console.log('[Call] Created callId:', callId);
-      
+
       setState({
         status: 'calling',
         callId,
@@ -149,7 +171,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         callId,
       });
       console.log('[Call] Call request sent');
-      
+
     } catch (err) {
       console.error('[Call] Failed to initiate call:', err);
       throw err;
