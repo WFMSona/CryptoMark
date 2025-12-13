@@ -438,25 +438,36 @@ class BlockchainVerifier:
         else:
             bot_id_bytes = bytes.fromhex(bot_id.ljust(64, '0')[:64])
         
-        # Pozovi getModel funkciju
-        model = self.contract.functions.getModel(bot_id_bytes).call()
-        
-        # Model tuple: (owner, status, wmSpecHash, uri, createdAt)
-        owner = model[0]
-        status = model[1]
-        uri = model[3]
-        created_at = model[4]
-        
-        # Proveri da li postoji (owner != zero address)
-        exists = owner != '0x0000000000000000000000000000000000000000'
-        
-        return {
-            'exists': exists,
-            'owner': owner,
-            'status': 'ACTIVE' if status == 1 else 'REVOKED',
-            'created_at': created_at,
-            'uri': uri
-        }
+        try:
+            # Pozovi getModel funkciju
+            model = self.contract.functions.getModel(bot_id_bytes).call()
+            
+            # Model tuple: (owner, status, wmSpecHash, uri, createdAt)
+            owner = model[0]
+            status = model[1]
+            uri = model[3]
+            created_at = model[4]
+            
+            # Proveri da li postoji (owner != zero address)
+            exists = owner != '0x0000000000000000000000000000000000000000'
+            
+            return {
+                'exists': exists,
+                'owner': owner,
+                'status': 'ACTIVE' if status == 1 else ('REVOKED' if status == 2 else 'UNKNOWN'),
+                'created_at': created_at,
+                'uri': uri
+            }
+        except Exception as e:
+            # Ako ne može da kontaktira contract, vrati not exists
+            print(f"Warning: Could not verify bot on blockchain: {e}")
+            return {
+                'exists': False,
+                'owner': '0x0000000000000000000000000000000000000000',
+                'status': 'UNKNOWN',
+                'created_at': 0,
+                'uri': ''
+            }
     
     def get_all_registered_bots(self) -> list:
         """

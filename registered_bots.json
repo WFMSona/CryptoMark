@@ -10,5 +10,17 @@
     "name": "E2ETestBot",
     "owner": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
     "registered_at": "2025-12-13T11:24:01.110355"
+  },
+  {
+    "bot_id": "0x64929cfbf7f0f20ee0d7da022e29bb9c51009fc5",
+    "name": "E2ETestBot",
+    "owner": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "registered_at": "2025-12-13T11:35:50.367753"
+  },
+  {
+    "bot_id": "0x59ff26470a116d505608922a40ad028bb04872c9",
+    "name": "E2ETestBot",
+    "owner": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "registered_at": "2025-12-13T11:36:41.597165"
   }
 ]

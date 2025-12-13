@@ -215,17 +215,24 @@ def detect_watermark_endpoint():
         os.unlink(audio_path)
         
         if detected_bot:
-            # TODO: Dohvati informacije o botu sa blockchain-a
-            # bot_info = verifier.verify_bot_id(detected_bot)
+            # Dohvati informacije o botu sa blockchain-a
+            bot_info = None
+            if verifier:
+                try:
+                    bot_info = verifier.verify_bot_id(detected_bot)
+                except Exception as e:
+                    print(f"Warning: Could not verify bot on blockchain: {e}")
             
             return jsonify({
                 'detected': True,
                 'bot_id': detected_bot,
                 'confidence': float(confidence),
                 'bot_info': {
-                    'owner': '0x...',  # bot_info['owner']
-                    'status': 'ACTIVE',  # bot_info['status']
-                    'registered_at': 'timestamp'  # bot_info['created_at']
+                    'owner': bot_info['owner'] if bot_info else 'unknown',
+                    'status': bot_info['status'] if bot_info else 'unknown',
+                    'registered_at': bot_info['created_at'] if bot_info else None,
+                    'uri': bot_info['uri'] if bot_info else None,
+                    'exists': bot_info['exists'] if bot_info else False
                 },
                 'timestamp': datetime.utcnow().isoformat()
             })
@@ -260,18 +267,22 @@ def verify_bot_endpoint():
         if not bot_id:
             return jsonify({'error': 'No bot_id provided'}), 400
         
-        # TODO: Pozovi blockchain
-        # bot_info = verifier.verify_bot_id(bot_id)
+        if not verifier:
+            return jsonify({'error': 'Blockchain verifier not available'}), 503
         
-        # Placeholder response
+        # Pozovi blockchain
+        try:
+            bot_info = verifier.verify_bot_id(bot_id)
+        except Exception as e:
+            return jsonify({'error': f'Blockchain verification failed: {str(e)}'}), 500
+        
         return jsonify({
             'bot_id': bot_id,
-            'exists': True,
-            'owner': '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
-            'status': 'ACTIVE',
-            'created_at': 1702468800,
-            'uri': 'ipfs://QmXxx...',
-            'watermark_spec_hash': '0xabcd...'
+            'exists': bot_info['exists'],
+            'owner': bot_info['owner'],
+            'status': bot_info['status'],
+            'created_at': bot_info['created_at'],
+            'uri': bot_info['uri']
         })
         
     except Exception as e:
