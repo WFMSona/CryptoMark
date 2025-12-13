@@ -1,5 +1,3 @@
-
-
 import torch
 import numpy as np
 from audioseal import AudioSeal
@@ -80,37 +78,41 @@ class AudioWatermarker:
     
     def embed_watermark(self, audio_path: str, bot_id: str, output_path: str) -> bool:
         try:
-            # 1. Učitaj audio koristeći scipy
-            sr, audio_np = wavfile.read(audio_path)
+            # 1. Učitaj audio (podrška za MP3/WAV)
+            if audio_path.lower().endswith('.mp3'):
+                from pydub import AudioSegment
+                audio_segment = AudioSegment.from_mp3(audio_path)
+                # Konvertuj u WAV u memoriji
+                import io
+                wav_buffer = io.BytesIO()
+                audio_segment.export(wav_buffer, format='wav')
+                wav_buffer.seek(0)
+                sr, audio_np = wavfile.read(wav_buffer)
+            else:
+                sr, audio_np = wavfile.read(audio_path)
             
             # Konvertuj u float32 i normalizuj
             if audio_np.dtype == np.int16:
                 audio_np = audio_np.astype(np.float32) / 32768.0
             elif audio_np.dtype == np.int32:
                 audio_np = audio_np.astype(np.float32) / 2147483648.0
-            
             # Konvertuj u PyTorch tensor
             audio = torch.from_numpy(audio_np).float()
-            
             # Ako je mono, dodaj dimenziju za kanal
             if audio.dim() == 1:
                 audio = audio.unsqueeze(0)
             # Ako je stereo, konvertuj na mono
             elif audio.dim() == 2:
                 audio = torch.mean(audio, dim=1, keepdim=True).T
-            
             # Resample ako je potrebno
             if sr != self.sample_rate:
                 from torchaudio.transforms import Resample
                 resampler = Resample(sr, self.sample_rate)
                 audio = resampler(audio)
-            
             # Prebaci na device
             audio = audio.to(self.device)
-            
             # 2. Generiši poruku od bot_id
             message = self._bot_id_to_message(bot_id)
-            
             # 3. Ugradi watermark koristeći AudioSeal
             with torch.no_grad():
                 watermarked_audio = self.model(
@@ -119,85 +121,81 @@ class AudioWatermarker:
                     sample_rate=self.sample_rate
                 )
                 watermarked_audio = watermarked_audio.squeeze(0)
-            
-            # 4. Sačuvaj koristeći scipy
+            # 4. Sačuvaj kao WAV
             watermarked_audio = watermarked_audio.cpu().squeeze().numpy()
             # Konvertuj nazad u int16
             watermarked_int16 = np.int16(np.clip(watermarked_audio, -1.0, 1.0) * 32767)
             wavfile.write(output_path, self.sample_rate, watermarked_int16)
-            
             return True
-            
         except Exception as e:
+            print(f"Error in embed_watermark: {e}")
             return False
     
     def detect_watermark(self, audio_path: str, candidate_bot_ids: list) -> Tuple[Optional[str], float]:
         try:
-            # 1. Učitaj audio koristeći scipy
-            sr, audio_np = wavfile.read(audio_path)
+            # 1. Učitaj audio (podrška za MP3/WAV)
+            if audio_path.lower().endswith('.mp3'):
+                from pydub import AudioSegment
+                audio_segment = AudioSegment.from_mp3(audio_path)
+                # Konvertuj u WAV u memoriji
+                import io
+                wav_buffer = io.BytesIO()
+                audio_segment.export(wav_buffer, format='wav')
+                wav_buffer.seek(0)
+                sr, audio_np = wavfile.read(wav_buffer)
+            else:
+                sr, audio_np = wavfile.read(audio_path)
             
             # Konvertuj u float32 i normalizuj
             if audio_np.dtype == np.int16:
                 audio_np = audio_np.astype(np.float32) / 32768.0
             elif audio_np.dtype == np.int32:
                 audio_np = audio_np.astype(np.float32) / 2147483648.0
-            
             # Konvertuj u PyTorch tensor
             audio = torch.from_numpy(audio_np).float()
-            
             # Ako je mono, dodaj dimenziju za kanal
             if audio.dim() == 1:
                 audio = audio.unsqueeze(0)
             # Ako je stereo, konvertuj na mono
             elif audio.dim() == 2:
                 audio = torch.mean(audio, dim=1, keepdim=True).T
-            
             # Resample ako je potrebno
             if sr != self.sample_rate:
                 from torchaudio.transforms import Resample
                 resampler = Resample(sr, self.sample_rate)
                 audio = resampler(audio)
-            
             # Prebaci na device
             audio = audio.to(self.device)
-            
             # 2. Detektuj watermark koristeći AudioSeal
             with torch.no_grad():
                 result, message = self.detector.detect_watermark(
                     audio.unsqueeze(0), 
                     sample_rate=self.sample_rate
                 )
-            
             # result sadrži confidence score (može biti float ili tensor)
             if isinstance(result, torch.Tensor):
                 detection_confidence = result.item()
             else:
                 detection_confidence = float(result)
-            
             # 3. Proveri da li je watermark detektovan
             detection_threshold = 0.5  # AudioSeal threshold
-            
             if detection_confidence < detection_threshold:
                 return None, 0.0
-            
             # 4. Dekoduj poruku
             # message je tensor sa bitovima - AudioSeal vraća batch format (batch, bits)
             if message.dim() > 1:
                 message = message.squeeze(0)  # Ukloni batch dimenziju
-            
             # Konvertuj u binarne vrednosti (0 ili 1)
             detected_message = (message > 0.5).int()
-            
             # 5. Mapiranje nazad na bot_id
             bot_id, match_confidence = self._message_to_bot_id(detected_message, candidate_bot_ids)
-            
             if bot_id:
                 overall_confidence = detection_confidence * match_confidence
                 return bot_id, overall_confidence
             else:
                 return None, 0.0
-                
-        except Exception:
+        except Exception as e:
+            print(f"Error in detect_watermark: {e}")
             return None, 0.0
     
 
@@ -209,15 +207,24 @@ class BlockchainVerifier:
         Dohvata sve registrovane bot_id sa blockchaina koristeći ModelRegistered event.
         Returns: lista bot_id (hex string)
         """
-        events = self.contract.events.ModelRegistered.get_logs(fromBlock=0)
+        # Try using w3.eth.get_logs directly
+        event_signature = self.w3.keccak(text="ModelRegistered(bytes32,address,bytes32)").hex()
+        logs = self.w3.eth.get_logs({
+            'fromBlock': 0,
+            'toBlock': 'latest',
+            'address': self.contract_address,
+            'topics': [event_signature]
+        })
         bot_ids = []
-        for event in events:
+        for log in logs:
+            # Decode the log
+            event = self.contract.events.ModelRegistered().process_log(log)
             model_id = event['args']['modelId']
             bot_id_hex = '0x' + model_id.hex()
             bot_ids.append(bot_id_hex)
         return bot_ids
 
-    def __init__(self, contract_address: str, provider_url: str, abi: list = None):
+    def __init__(self, contract_address: str, provider_url: str, abi: list = None, w3=None):
         from web3 import Web3
         import json
         
@@ -225,7 +232,9 @@ class BlockchainVerifier:
         self.provider_url = provider_url
         
         # Konektuj se na blockchain (eth-tester ili HTTP)
-        if provider_url == 'eth-tester://embedded':
+        if w3 is not None:
+            self.w3 = w3
+        elif provider_url == 'eth-tester://embedded':
             from web3 import EthereumTesterProvider
             self.w3 = Web3(EthereumTesterProvider())
         else:
@@ -259,6 +268,8 @@ class BlockchainVerifier:
         else:
             bot_id_bytes = bytes.fromhex(bot_id.ljust(64, '0')[:64])
         
+        print(f"DEBUG: register_bot bot_id_bytes: {bot_id_bytes.hex()}")
+        
         # Default wm_spec_hash ako nije prosleđen
         if wm_spec_hash is None:
             wm_spec_hash = bytes(32)  # Nulti hash
@@ -270,7 +281,8 @@ class BlockchainVerifier:
             wm_spec_hash,
             uri
         ).transact({'from': self.w3.to_checksum_address(owner)})
-        self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        print(f"DEBUG: Transaction receipt: {receipt}")
         return tx_hash.hex()
     
     def verify_bot_id(self, bot_id: str) -> dict:
@@ -279,6 +291,8 @@ class BlockchainVerifier:
             bot_id_bytes = bytes.fromhex(bot_id[2:].ljust(64, '0')[:64])
         else:
             bot_id_bytes = bytes.fromhex(bot_id.ljust(64, '0')[:64])
+        
+        print(f"DEBUG: verify_bot_id bot_id_bytes: {bot_id_bytes.hex()}")
         
         try:
             model = self.contract.functions.getModel(bot_id_bytes).call()
