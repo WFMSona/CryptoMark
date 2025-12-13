@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VoIP Demo</title>
+    <style>
+      body { font-family: system-ui, -apple-system, sans-serif; padding: 16px; }
+      video { width: 45%; background: #000; }
+      #controls { margin-bottom: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>1-1 VoIP Demo</h1>
+    <div id="controls">
+      <input id="roomInput" placeholder="room name" />
+      <button id="createBtn">Create room</button>
+      <button id="joinBtn">Join room</button>
+      <button id="hangupBtn" disabled>Hang Up</button>
+    </div>
+
+    <div style="margin-top:12px; padding:12px; background:#f0f0f0; border-radius:6px;">
+      <strong>Audio Source:</strong>
+      <label style="margin-left:12px;">
+        <input type="radio" name="audioSource" value="microphone" checked />
+        Microphone
+      </label>
+      <label style="margin-left:12px;">
+        <input type="radio" name="audioSource" value="file" />
+        Audio File
+      </label>
+      <input type="file" id="audioFileInput" accept="audio/*" style="margin-left:12px; display:none;" />
+      <button id="playAudioBtn" style="margin-left:12px; display:none;" disabled>Play Audio</button>
+      <label style="margin-left:8px;">
+        <input type="checkbox" id="loopAudioCheckbox" style="display:none;" checked />
+        <span id="loopAudioLabel" style="display:none;">Loop audio</span>
+      </label>
+    </div>
+
+    <div>
+      <video id="localVideo" autoplay muted playsinline></video>
+      <video id="remoteVideo" autoplay playsinline controls></video>
+    </div>
+    <div style="margin-top:12px; display:flex; gap:8px; align-items:center;">
+      <button id="startMediaBtn">Start camera & microphone</button>
+      <div id="status" style="flex:1; font-family: monospace; white-space: pre-wrap; background:#f7f7f7; padding:8px; border-radius:6px;">
+        <strong>Status</strong>
+        <div id="statusText">Not connected</div>
+      </div>
+    </div>
+    <div id="diagnostics" style="margin-top:8px; font-family: monospace; background:#fff8e1; padding:8px; border-radius:6px; display:none;">
+      <strong>Diagnostics</strong>
+      <pre id="diagText" style="white-space: pre-wrap; margin-top:6px;"></pre>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
