@@ -31,7 +31,7 @@ export function IncomingCallModal() {
           </button>
           <button
             className={`${styles.actionBtn} ${styles.accept}`}
-            onClick={acceptCall}
+            onClick={() => acceptCall()}
           >
             <PhoneIcon size={28} />
           </button>

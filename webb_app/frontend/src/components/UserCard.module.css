@@ -68,3 +68,8 @@
   background: var(--success);
   box-shadow: 0 0 8px var(--success);
 }
+
+.actions {
+  display: flex;
+  gap: 8px;
+}

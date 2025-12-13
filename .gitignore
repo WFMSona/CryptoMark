@@ -70,3 +70,13 @@ pnpm-debug.log*
 dist/
 build/
 .cache/
+
+# Local database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Recorded / generated audio
+*.wav
+*.mp3
+

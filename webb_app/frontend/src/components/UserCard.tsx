@@ -22,15 +22,17 @@ export function UserCard({ user, onCall, disabled }: UserCardProps) {
           {user.online ? 'Online' : 'Offline'}
         </span>
       </div>
-      <Button
-        variant="primary"
-        size="sm"
-        icon={<PhoneIcon size={16} />}
-        onClick={() => onCall(user)}
-        disabled={disabled || !user.online}
-      >
-        Call
-      </Button>
+      <div className={styles.actions}>
+        <Button
+          variant="primary"
+          size="sm"
+          icon={<PhoneIcon size={16} />}
+          onClick={() => onCall(user)}
+          disabled={disabled || !user.online}
+        >
+          Call
+        </Button>
+      </div>
     </div>
   );
 }

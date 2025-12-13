@@ -11,10 +11,13 @@ interface CallContextType extends CallState {
   endCall: () => void;
   toggleRecording: () => void;
   toggleMute: () => void;
+  toggleAiMode: () => Promise<void>;
+  callMode: 'human' | 'ai';
   incomingCall: { callId: string; caller: User } | null;
   detectionResults: DetectionResult[];
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
+  isRecordingInitiator: boolean;
 }
 
 const CallContext = createContext<CallContextType | null>(null);
@@ -33,7 +36,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
+  const [callMode, setCallMode] = useState<'human' | 'ai'>('human');
+  const [isRecordingInitiator, setIsRecordingInitiator] = useState<boolean>(false);
+
   const ringtoneRef = useRef<HTMLAudioElement | null>(null);
+
+  const stopRingtone = useCallback(() => {
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause();
+      ringtoneRef.current.currentTime = 0;
+    }
+  }, []);
 
   // Initialize ringtone
   useEffect(() => {
@@ -48,12 +61,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
         console.warn('[Call] Failed to play ringtone:', err);
       });
     } else {
-      if (ringtoneRef.current) {
-        ringtoneRef.current.pause();
-        ringtoneRef.current.currentTime = 0;
-      }
+      stopRingtone();
     }
-  }, [incomingCall]);
+  }, [incomingCall, stopRingtone]);
 
   // Handle WebSocket messages
   useEffect(() => {
@@ -75,6 +85,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         }
 
         case 'call-accept':
+          stopRingtone(); // Ensure ringtone stops
           setState(s => ({ ...s, status: 'connected' }));
           if (state.callId && state.remoteUser) {
             await webrtcService.createOffer(state.remoteUser.id, state.callId);
@@ -82,6 +93,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           break;
 
         case 'call-reject': {
+          stopRingtone(); // Ensure ringtone stops
           const payload = message.payload as { reason?: string };
           console.log('[Call] Call rejected:', payload.reason);
           setState(s => ({ ...s, status: 'ended' }));
@@ -92,6 +104,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         }
 
         case 'call-end':
+          stopRingtone(); // Ensure ringtone stops
           webrtcService.endCall();
           setRemoteStream(null);
           setDetectionResults([]);
@@ -119,6 +132,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
         case 'recording-stop':
           setState(s => ({ ...s, isRecording: false }));
+          setIsRecordingInitiator(false);
           break;
       }
     });
@@ -131,7 +145,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       unsubMessage();
       unsubDetection();
     };
-  }, [state.callId, state.remoteUser]);
+  }, [state.callId, state.remoteUser, stopRingtone]);
 
   // Setup remote stream handler
   useEffect(() => {
@@ -147,8 +161,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const initiateCall = useCallback(async (targetUser: User) => {
     try {
       console.log('[Call] Initiating call to:', targetUser.username, targetUser.id);
+      setCallMode('human'); // Reset to human mode
 
-      const stream = await webrtcService.initialize();
+      const stream = await webrtcService.initialize('human');
       setLocalStream(stream);
 
       const callId = `call_${Date.now()}`;
@@ -161,6 +176,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         isRecording: false,
         isMuted: false,
       });
+      setIsRecordingInitiator(false); // Reset initiator state
 
       console.log('[Call] Sending call-request via WebSocket');
       wsService.send({
@@ -180,9 +196,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall) return;
+    stopRingtone(); // Stop ringtone immediately
+    setCallMode('human'); // Reset to human mode
 
     try {
-      const stream = await webrtcService.initialize();
+      const stream = await webrtcService.initialize('human');
       setLocalStream(stream);
       webrtcService.setCallId(incomingCall.callId);
 
@@ -207,10 +225,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
       console.error('[Call] Failed to accept call:', err);
       throw err;
     }
-  }, [incomingCall, user]);
+  }, [incomingCall, user, stopRingtone]);
 
   const rejectCall = useCallback(() => {
     if (!incomingCall) return;
+    stopRingtone(); // Stop ringtone immediately
 
     wsService.send({
       type: 'call-reject',
@@ -221,9 +240,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
     });
 
     setIncomingCall(null);
-  }, [incomingCall, user]);
+  }, [incomingCall, user, stopRingtone]);
 
   const endCall = useCallback(() => {
+    stopRingtone();
     if (state.remoteUser && state.callId) {
       wsService.send({
         type: 'call-end',
@@ -241,13 +261,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setTimeout(() => {
       setState(s => ({ ...s, status: 'idle', callId: null, remoteUser: null }));
     }, 2000);
-  }, [state.remoteUser, state.callId, user]);
+  }, [state.remoteUser, state.callId, user, stopRingtone]);
 
   const toggleRecording = useCallback(() => {
     if (webrtcService.isRecording()) {
       webrtcService.stopRecording();
+      // isRecordingInitiator remains true until confirmation or stop
     } else {
       webrtcService.startRecording();
+      setIsRecordingInitiator(true); // User clicked local button
     }
   }, []);
 
@@ -255,6 +277,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const muted = webrtcService.toggleMute();
     setState(s => ({ ...s, isMuted: muted }));
   }, []);
+
+  const toggleAiMode = useCallback(async () => {
+    const newMode = callMode === 'human' ? 'ai' : 'human';
+    try {
+      await webrtcService.switchInputSource(newMode);
+      setCallMode(newMode);
+      console.log(`[Call] Switched to ${newMode} mode`);
+    } catch (err) {
+      console.error('[Call] Failed to toggle AI mode:', err);
+    }
+  }, [callMode]);
 
   return (
     <CallContext.Provider
@@ -266,10 +299,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
         endCall,
         toggleRecording,
         toggleMute,
+        toggleAiMode,
+        callMode,
         incomingCall,
         detectionResults,
         localStream,
         remoteStream,
+        isRecordingInitiator,
       }}
     >
       {children}

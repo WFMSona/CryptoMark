@@ -9,6 +9,7 @@ class WebSocketService {
   private messageHandlers: Set<MessageHandler> = new Set();
   private detectionHandlers: Set<DetectionHandler> = new Set();
   private onlineUsersHandlers: Set<OnlineUsersHandler> = new Set();
+  private audioHandlers: Set<(data: ArrayBuffer) => void> = new Set();
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private token: string | null = null;
@@ -45,8 +46,19 @@ class WebSocketService {
       this.reconnectAttempts = 0;
     };
 
-    this.socket.onmessage = (event) => {
+    this.socket.onmessage = async (event) => {
       try {
+        // Handle Binary Audio Data
+        if (event.data instanceof Blob) {
+          const arrayBuffer = await event.data.arrayBuffer();
+          this.audioHandlers.forEach(handler => handler(arrayBuffer));
+          return;
+        }
+        if (event.data instanceof ArrayBuffer) {
+          this.audioHandlers.forEach(handler => handler(event.data));
+          return;
+        }
+
         const message = JSON.parse(event.data) as SignalingMessage;
 
         if (message.type === 'online-users') {
@@ -121,6 +133,11 @@ class WebSocketService {
   onOnlineUsers(handler: OnlineUsersHandler): () => void {
     this.onlineUsersHandlers.add(handler);
     return () => this.onlineUsersHandlers.delete(handler);
+  }
+
+  onAudioData(handler: (data: ArrayBuffer) => void): () => void {
+    this.audioHandlers.add(handler);
+    return () => this.audioHandlers.delete(handler);
   }
 
   isConnected(): boolean {

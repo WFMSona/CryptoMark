@@ -8,7 +8,7 @@ import type { SignalingMessage, WebSocketClient, DetectionResult } from '../type
 class WebSocketManager {
   private wss: WebSocketServer | null = null;
   private clients: Map<string, WebSocketClient> = new Map();
-  private activeCalls: Map<string, { callerId: string; calleeId: string; recording: boolean }> = new Map();
+  private activeCalls: Map<string, { callerId: string; calleeId: string; recording: boolean; recordingInitiator?: string }> = new Map();
 
   initialize(server: Server): void {
     this.wss = new WebSocketServer({ server, path: '/ws' });
@@ -116,12 +116,13 @@ class WebSocketManager {
 
   private handleAudioData(client: WebSocketClient, audioData: Buffer): void {
     // Find active call for this client
+    console.log(`[WS] Received audio chunk from ${client.username}, size: ${audioData.length}`);
     for (const [callId, call] of this.activeCalls) {
       if (call.recording && (call.callerId === client.userId || call.calleeId === client.userId)) {
-        // Write to recording
+        // 1. Write to recording (Keep this for verification)
         recordingService.writeChunk(callId, audioData);
 
-        // Send to detector
+        // 2. Send to detector (Keep this)
         const remoteSpeakerId = call.callerId === client.userId ? call.calleeId : call.callerId;
         voiceDetector.processAudioChunk(callId, remoteSpeakerId, audioData);
         break;
@@ -161,8 +162,9 @@ class WebSocketManager {
 
     console.log(`[WS] Forwarding call request from ${client.username} to ${targetClient.username}`);
 
-    // Create call session
-    const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // Create call session - Use provided callId or generate if missing (fallback)
+    const callId = message.callId || `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
     this.activeCalls.set(callId, {
       callerId: client.userId,
       calleeId: message.to,
@@ -216,16 +218,30 @@ class WebSocketManager {
   }
 
   private handleRecordingStart(client: WebSocketClient, message: SignalingMessage): void {
+    console.log(`[WS] handleRecordingStart from ${client.username} for call ${message.callId}`);
     const callId = message.callId;
-    if (!callId) return;
+    if (!callId) {
+      console.warn('[WS] Recording start failed: No callId');
+      return;
+    }
 
     const call = this.activeCalls.get(callId);
-    if (!call) return;
+    if (!call) {
+      console.warn(`[WS] Recording start failed: Call ${callId} not found`);
+      return;
+    }
 
+    console.log(`[WS] Starting recording for call ${callId}. Caller: ${call.callerId}, Callee: ${call.calleeId}`);
     call.recording = true;
+    call.recordingInitiator = client.userId;
     const remoteSpeakerId = call.callerId === client.userId ? call.calleeId : call.callerId;
 
-    recordingService.startRecording(callId, remoteSpeakerId);
+    // Extract sample rate if provided (default to 48000)
+    const payload = message.payload as { sampleRate?: number };
+    const sampleRate = payload.sampleRate || 48000;
+    console.log(`[WS] Recording Sample Rate: ${sampleRate}Hz`);
+
+    recordingService.startRecording(callId, remoteSpeakerId, sampleRate);
     voiceDetector.startProcessing(callId, remoteSpeakerId);
 
     // Notify both parties
@@ -284,16 +300,18 @@ class WebSocketManager {
     const call = this.activeCalls.get(result.callId);
     if (!call) return;
 
-    // Send result to the user who initiated recording (opposite of speaker being analyzed)
-    const recipientId = result.speakerId === call.callerId ? call.calleeId : call.callerId;
+    // Only send result if there is a recording initiator and they are the one supposed to receive it
+    // The result is about 'speakerId'. We want to send it to the 'recordingInitiator'.
 
-    this.sendToClient(recipientId, {
-      type: 'detection-result' as 'offer', // Type assertion for custom message
-      payload: result,
-      from: 'system',
-      to: recipientId,
-      callId: result.callId,
-    });
+    if (call.recordingInitiator) {
+      this.sendToClient(call.recordingInitiator, {
+        type: 'detection-result' as 'offer',
+        payload: result,
+        from: 'system',
+        to: call.recordingInitiator,
+        callId: result.callId,
+      });
+    }
   }
 
   private sendToClient(userId: string, message: SignalingMessage): void {

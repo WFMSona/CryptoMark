@@ -8,7 +8,8 @@ import {
   MicOffIcon,
   RecordIcon,
   StopIcon,
-  WaveformIcon
+  WaveformIcon,
+  RobotIcon
 } from '../components';
 import styles from './CallPage.module.css';
 
@@ -22,7 +23,10 @@ export function CallPage() {
     endCall,
     toggleRecording,
     toggleMute,
+    toggleAiMode,
+    callMode,
     detectionResults,
+    isRecordingInitiator,
     remoteStream,
   } = useCall();
 
@@ -115,7 +119,9 @@ export function CallPage() {
 
         {status === 'connected' && (
           <div className={styles.detection}>
-            <DetectionIndicator results={detectionResults} isRecording={isRecording} />
+            {isRecordingInitiator && (
+              <DetectionIndicator results={detectionResults} isRecording={isRecording} />
+            )}
           </div>
         )}
       </main>
@@ -130,13 +136,24 @@ export function CallPage() {
         </button>
 
         {status === 'connected' && (
-          <button
-            className={`${styles.controlBtn} ${styles.recordBtn} ${isRecording ? styles.recording : ''}`}
-            onClick={toggleRecording}
-            title={isRecording ? 'Stop Recording' : 'Start Recording'}
-          >
-            {isRecording ? <StopIcon size={24} /> : <RecordIcon size={24} />}
-          </button>
+          <>
+            <button
+              className={`${styles.controlBtn} ${callMode === 'ai' ? styles.activeAi : ''}`}
+              onClick={toggleAiMode}
+              title={callMode === 'ai' ? 'Switch to Human' : 'Switch to AI'}
+              style={{ color: callMode === 'ai' ? 'var(--accent-primary)' : 'inherit' }}
+            >
+              <RobotIcon size={24} />
+            </button>
+
+            <button
+              className={`${styles.controlBtn} ${styles.recordBtn} ${isRecording ? styles.recording : ''}`}
+              onClick={toggleRecording}
+              title={isRecording ? 'Stop Recording' : 'Start Recording'}
+            >
+              {isRecording ? <StopIcon size={24} /> : <RecordIcon size={24} />}
+            </button>
+          </>
         )}
 
         <button
