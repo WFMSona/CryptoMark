@@ -11,17 +11,76 @@ import os
 import tempfile
 import hashlib
 from datetime import datetime
+import json
 
 app = Flask(__name__)
 
 # Inicijalizacija AudioSeal
 watermarker = AudioWatermarker(sample_rate=16000, nbits=16)
 
-# Placeholder za blockchain verifier (setuj prave vrednosti)
-# verifier = BlockchainVerifier(
-#     contract_address="0xYourContractAddress",
-#     provider_url="https://your-rpc-provider.com"
-# )
+# Fajl za čuvanje registrovanih bot ID-eva
+REGISTERED_BOTS_FILE = 'registered_bots.json'
+
+def load_registered_bots():
+    """Učitava listu registrovanih bot ID-eva"""
+    try:
+        with open(REGISTERED_BOTS_FILE, 'r') as f:
+            return json.load(f)
+    except:
+        return []
+
+def save_registered_bot(bot_id, bot_info):
+    """Čuva novi bot ID u listu"""
+    bots = load_registered_bots()
+    
+    # Proveri da li već postoji
+    for bot in bots:
+        if bot['bot_id'] == bot_id:
+            return  # Već postoji
+    
+    # Dodaj novi
+    bots.append({
+        'bot_id': bot_id,
+        'name': bot_info.get('name', 'Unknown'),
+        'owner': bot_info.get('owner', ''),
+        'registered_at': datetime.utcnow().isoformat()
+    })
+    
+    with open(REGISTERED_BOTS_FILE, 'w') as f:
+        json.dump(bots, f, indent=2)
+    
+    print(f"  ✓ Bot {bot_id[:10]}... added to candidate list ({len(bots)} total)")
+
+# Inicijalizacija BlockchainVerifier
+verifier = None
+blockchain_enabled = False
+
+try:
+    # Učitaj deployment info
+    with open('deployment_info.json', 'r') as f:
+        deployment = json.load(f)
+    
+    # Proveri da li je stvarni blockchain (eth-tester)
+    if deployment.get('blockchain_type') == 'eth-tester':
+        from web3 import Web3, EthereumTesterProvider
+        
+        # Inicijalizuj pravi blockchain verifier
+        verifier = BlockchainVerifier(
+            contract_address=deployment['contract_address'],
+            provider_url=deployment['provider_url'],
+            abi=deployment['abi']
+        )
+        print("✓ Real blockchain connected (eth-tester EVM)")
+        print(f"  Contract: {deployment['contract_address']}")
+        blockchain_enabled = True
+    else:
+        # Mock mode
+        print("✓ Blockchain configuration loaded (mock mode)")
+        print(f"  Contract: {deployment['contract_address']}")
+        blockchain_enabled = True
+except Exception as e:
+    print(f"⚠ Blockchain verifier not available: {e}")
+    print("  API will work without blockchain verification")
 
 
 @app.route('/api/v1/embed', methods=['POST'])
@@ -56,12 +115,11 @@ def embed_watermark_endpoint():
         if not bot_id.startswith('0x') or len(bot_id) != 42:
             return jsonify({'error': 'Invalid bot_id format (expected 0x + 40 hex chars)'}), 400
         
-        # TODO: Verifikuj da je bot registrovan na blockchain-u
-        # bot_info = verifier.verify_bot_id(bot_id)
-        # if not bot_info['exists']:
-        #     return jsonify({'error': 'Bot ID not registered on blockchain'}), 403
-        # if bot_info['status'] != 'ACTIVE':
-        #     return jsonify({'error': 'Bot ID is revoked'}), 403
+        # Verifikuj da je bot registrovan na blockchain-u (opciono za embed)
+        # Za real-world, ovde bi proverili blockchain
+        # Za demo, prihvatamo sve bot_id-eve
+        if verifier and blockchain_enabled:
+            print(f"  Note: Bot verification skipped for embed (accept all)")
         
         # Sačuvaj privremeno input fajl
         with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_input:
@@ -132,15 +190,20 @@ def detect_watermark_endpoint():
             audio_file.save(tmp.name)
             audio_path = tmp.name
         
-        # TODO: Dohvati sve registrovane bot ID-eve sa blockchain-a
-        # all_bot_ids = verifier.get_all_registered_bots()
+        # Dohvati sve registrovane bot ID-eve
+        registered_bots = load_registered_bots()
+        all_bot_ids = [bot['bot_id'] for bot in registered_bots]
         
-        # Za demo, koristi neke test ID-eve
-        all_bot_ids = [
-            "0x1234567890abcdef1234567890abcdef12345678",
-            "0xabcdef1234567890abcdef1234567890abcdef12",
-            "0x9876543210fedcba9876543210fedcba98765432"
-        ]
+        if not all_bot_ids:
+            # Fallback na test ID-eve ako nema registrovanih
+            all_bot_ids = [
+                "0x1234567890abcdef1234567890abcdef12345678",
+                "0xabcdef1234567890abcdef1234567890abcdef12",
+                "0x9876543210fedcba9876543210fedcba98765432"
+            ]
+            print(f"  Using fallback candidate list ({len(all_bot_ids)} bots)")
+        else:
+            print(f"  Using registered bots as candidates ({len(all_bot_ids)} bots)")
         
         # Detektuj watermark
         detected_bot, confidence = watermarker.detect_watermark(
@@ -173,88 +236,6 @@ def detect_watermark_endpoint():
                 'confidence': 0.0,
                 'timestamp': datetime.utcnow().isoformat()
             })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/v1/batch-embed', methods=['POST'])
-def batch_embed_endpoint():
-    """
-    Endpoint za batch procesiranje više audio fajlova.
-    
-    POST /api/v1/batch-embed
-    Content-Type: multipart/form-data
-    
-    Parameters:
-        - audio_files[]: Lista audio fajlova
-        - bot_id: ID bota
-        
-    Returns:
-        - results: Lista rezultata za svaki fajl
-        - success_count: Broj uspešno procesiranih
-    """
-    try:
-        if 'bot_id' not in request.form:
-            return jsonify({'error': 'No bot_id provided'}), 400
-        
-        bot_id = request.form['bot_id']
-        
-        # Dohvati sve fajlove
-        files = request.files.getlist('audio_files[]')
-        
-        if not files:
-            return jsonify({'error': 'No audio files provided'}), 400
-        
-        results = []
-        success_count = 0
-        
-        for idx, audio_file in enumerate(files):
-            try:
-                # Privremeni fajlovi
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_in:
-                    audio_file.save(tmp_in.name)
-                    input_path = tmp_in.name
-                
-                output_path = tempfile.mktemp(suffix='.wav')
-                
-                # Embed
-                success = watermarker.embed_watermark(input_path, bot_id, output_path)
-                
-                if success:
-                    success_count += 1
-                    results.append({
-                        'filename': audio_file.filename,
-                        'status': 'success',
-                        'index': idx
-                    })
-                else:
-                    results.append({
-                        'filename': audio_file.filename,
-                        'status': 'failed',
-                        'error': 'Embedding failed',
-                        'index': idx
-                    })
-                
-                # Cleanup
-                os.unlink(input_path)
-                if os.path.exists(output_path):
-                    os.unlink(output_path)
-                    
-            except Exception as e:
-                results.append({
-                    'filename': audio_file.filename,
-                    'status': 'error',
-                    'error': str(e),
-                    'index': idx
-                })
-        
-        return jsonify({
-            'results': results,
-            'total': len(files),
-            'success_count': success_count,
-            'timestamp': datetime.utcnow().isoformat()
-        })
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -297,6 +278,90 @@ def verify_bot_endpoint():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/v1/register-bot', methods=['POST'])
+def register_bot_endpoint():
+    """
+    Endpoint za registraciju novog bota na blockchain-u.
+    
+    POST /api/v1/register-bot
+    Content-Type: application/json
+    
+    Parameters:
+        - owner: Ethereum adresa vlasnika bota
+        - name: Ime bota
+        - description: Opis bota (opciono)
+        - metadata_uri: IPFS URI sa dodatnim informacijama (opciono)
+        
+    Returns:
+        - bot_id: Novi generisani bot ID
+        - tx_hash: Hash blockchain transakcije
+        - owner: Vlasnik bota
+        - status: Status registracije
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+        
+        # Validacija obaveznih polja
+        if 'owner' not in data:
+            return jsonify({'error': 'Owner address is required'}), 400
+        
+        if 'name' not in data:
+            return jsonify({'error': 'Bot name is required'}), 400
+        
+        owner = data['owner']
+        name = data['name']
+        description = data.get('description', '')
+        metadata_uri = data.get('metadata_uri', '')
+        
+        # Validacija Ethereum adrese
+        if not owner.startswith('0x') or len(owner) != 42:
+            return jsonify({'error': 'Invalid owner address format'}), 400
+        
+        # Generiši jedinstveni bot_id (kombinacija owner + name + timestamp)
+        unique_string = f"{owner}{name}{datetime.utcnow().isoformat()}"
+        bot_id = '0x' + hashlib.sha256(unique_string.encode()).hexdigest()[:40]
+        
+        # Registruj na blockchain
+        if not verifier:
+            return jsonify({'error': 'Blockchain verifier not available'}), 503
+        
+        try:
+            tx_hash = verifier.register_bot(
+                bot_id=bot_id,
+                owner=owner,
+                wm_spec_hash=None,
+                uri=metadata_uri or f"data:application/json,{{\\\"name\\\":\\\"{name}\\\",\\\"description\\\":\\\"{description}\\\"}}"
+            )
+        except Exception as e:
+            return jsonify({'error': f'Blockchain registration failed: {str(e)}'}), 500
+        
+        # Dodaj u listu registrovanih botova
+        save_registered_bot(bot_id, {
+            'name': name,
+            'owner': owner,
+            'description': description
+        })
+        
+        return jsonify({
+            'success': True,
+            'bot_id': bot_id,
+            'tx_hash': tx_hash,
+            'owner': owner,
+            'name': name,
+            'description': description,
+            'metadata_uri': metadata_uri,
+            'status': 'ACTIVE',
+            'created_at': datetime.utcnow().isoformat(),
+            'message': 'Bot successfully registered on blockchain'
+        }), 201
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
@@ -315,9 +380,9 @@ if __name__ == '__main__':
     ═══════════════════════════════════════════════════════════
     
     Endpoints:
+    • POST /api/v1/register-bot  - Register new bot
     • POST /api/v1/embed         - Embed watermark
     • POST /api/v1/detect        - Detect watermark
-    • POST /api/v1/batch-embed   - Batch processing
     • GET  /api/v1/verify-bot    - Verify bot on blockchain
     • GET  /health               - Health check
     
@@ -325,4 +390,4 @@ if __name__ == '__main__':
     ═══════════════════════════════════════════════════════════
     """)
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000)

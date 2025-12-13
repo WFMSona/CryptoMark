@@ -1,0 +1,14 @@
+[
+  {
+    "bot_id": "0x01684028c58aaba60ac05392c439374d97e49cf0",
+    "name": "E2ETestBot",
+    "owner": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "registered_at": "2025-12-13T11:15:35.722810"
+  },
+  {
+    "bot_id": "0xa62cb48c1968240eb2e2bfd0d24002ed97548f7e",
+    "name": "E2ETestBot",
+    "owner": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
+    "registered_at": "2025-12-13T11:24:01.110355"
+  }
+]

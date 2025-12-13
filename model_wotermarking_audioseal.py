@@ -344,19 +344,83 @@ class BlockchainVerifier:
     Integriše se sa ModelRegistry smart contract-om.
     """
     
-    def __init__(self, contract_address: str, provider_url: str):
+    def __init__(self, contract_address: str, provider_url: str, abi: list = None):
         """
         Args:
             contract_address: Adresa ModelRegistry smart contract-a
-            provider_url: RPC URL za blockchain (npr. Infura, Alchemy)
+            provider_url: RPC URL za blockchain (npr. Infura, Alchemy, ili eth-tester://embedded)
+            abi: Contract ABI (učitava se iz deployment_info.json ako nije prosleđen)
         """
+        from web3 import Web3
+        import json
+        
         self.contract_address = contract_address
         self.provider_url = provider_url
         
-        # TODO: Implementirati web3.py integraciju kad se deploy-uje contract
-        # from web3 import Web3
-        # self.w3 = Web3(Web3.HTTPProvider(provider_url))
-        # self.contract = self.w3.eth.contract(address=contract_address, abi=ABI)
+        # Konektuj se na blockchain (eth-tester ili HTTP)
+        if provider_url == 'eth-tester://embedded':
+            from web3 import EthereumTesterProvider
+            self.w3 = Web3(EthereumTesterProvider())
+        else:
+            self.w3 = Web3(Web3.HTTPProvider(provider_url))
+        
+        if not self.w3.is_connected():
+            raise Exception(f"Failed to connect to blockchain at {provider_url}")
+        
+        # Učitaj ABI
+        if abi is None:
+            # Pokušaj učitati iz deployment_info.json
+            try:
+                with open('deployment_info.json', 'r') as f:
+                    deployment = json.load(f)
+                    abi = deployment['abi']
+            except:
+                raise Exception("ABI not provided and deployment_info.json not found")
+        
+        # Inicijalizuj contract
+        self.contract = self.w3.eth.contract(
+            address=Web3.to_checksum_address(contract_address),
+            abi=abi
+        )
+        
+        print(f"✓ Connected to ModelRegistry at {contract_address}")
+    
+    def register_bot(self, bot_id: str, owner: str, wm_spec_hash: str = None, uri: str = "") -> str:
+        """
+        Registruje novi bot ID na blockchain.
+        
+        Args:
+            bot_id: Jedinstveni ID bota (hex string)
+            owner: Ethereum adresa vlasnika
+            wm_spec_hash: Hash watermark specifikacije (opciono)
+            uri: Metadata URI (opciono)
+            
+        Returns:
+            Transaction hash
+        """
+        # Konvertuj bot_id u bytes32
+        if bot_id.startswith('0x'):
+            bot_id_bytes = bytes.fromhex(bot_id[2:].ljust(64, '0')[:64])
+        else:
+            bot_id_bytes = bytes.fromhex(bot_id.ljust(64, '0')[:64])
+        
+        # Default wm_spec_hash ako nije prosleđen
+        if wm_spec_hash is None:
+            wm_spec_hash = bytes(32)  # Nulti hash
+        elif isinstance(wm_spec_hash, str):
+            wm_spec_hash = bytes.fromhex(wm_spec_hash.replace('0x', '').ljust(64, '0')[:64])
+        
+        # Pošalji transakciju
+        tx_hash = self.contract.functions.registerModel(
+            bot_id_bytes,
+            wm_spec_hash,
+            uri
+        ).transact({'from': self.w3.to_checksum_address(owner)})
+        
+        # Čekaj potvrdu
+        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        
+        return tx_hash.hex()
     
     def verify_bot_id(self, bot_id: str) -> dict:
         """
@@ -366,32 +430,32 @@ class BlockchainVerifier:
             bot_id: ID bota za proveru
             
         Returns:
-            Dict sa informacijama o botu:
-            {
-                'exists': bool,
-                'owner': str (address),
-                'status': str ('ACTIVE' ili 'REVOKED'),
-                'created_at': int (timestamp),
-                'uri': str (metadata link)
-            }
+            Dict sa informacijama o botu
         """
-        # TODO: Implementacija poziva ka smart contract-u
-        # model = self.contract.functions.getModel(bot_id).call()
-        # return {
-        #     'exists': model[0] != '0x0000000000000000000000000000000000000000',
-        #     'owner': model[0],
-        #     'status': 'ACTIVE' if model[1] == 1 else 'REVOKED',
-        #     'created_at': model[4],
-        #     'uri': model[3]
-        # }
+        # Konvertuj bot_id u bytes32
+        if bot_id.startswith('0x'):
+            bot_id_bytes = bytes.fromhex(bot_id[2:].ljust(64, '0')[:64])
+        else:
+            bot_id_bytes = bytes.fromhex(bot_id.ljust(64, '0')[:64])
         
-        # Placeholder
+        # Pozovi getModel funkciju
+        model = self.contract.functions.getModel(bot_id_bytes).call()
+        
+        # Model tuple: (owner, status, wmSpecHash, uri, createdAt)
+        owner = model[0]
+        status = model[1]
+        uri = model[3]
+        created_at = model[4]
+        
+        # Proveri da li postoji (owner != zero address)
+        exists = owner != '0x0000000000000000000000000000000000000000'
+        
         return {
-            'exists': True,
-            'owner': '0x0000000000000000000000000000000000000000',
-            'status': 'ACTIVE',
-            'created_at': 0,
-            'uri': ''
+            'exists': exists,
+            'owner': owner,
+            'status': 'ACTIVE' if status == 1 else 'REVOKED',
+            'created_at': created_at,
+            'uri': uri
         }
     
     def get_all_registered_bots(self) -> list:
@@ -401,14 +465,46 @@ class BlockchainVerifier:
         Koristi event log-ove (ModelRegistered) za efikasno skeniranje.
         
         Returns:
-            Lista bot ID-eva
+            Lista bot ID-eva (hex stringovi)
         """
-        # TODO: Implementacija skeniranja event-a
-        # events = self.contract.events.ModelRegistered.getLogs(fromBlock=0)
-        # return [event['args']['modelId'] for event in events]
+        # Dohvati sve ModelRegistered event-e
+        events = self.contract.events.ModelRegistered.get_logs(fromBlock=0)
         
-        # Placeholder
-        return []
+        # Ekstraktuj modelId iz svakog event-a
+        bot_ids = []
+        for event in events:
+            model_id = event['args']['modelId']
+            # Konvertuj bytes32 u hex string
+            bot_id_hex = '0x' + model_id.hex()
+            bot_ids.append(bot_id_hex)
+        
+        return bot_ids
+    
+    def revoke_bot(self, bot_id: str, owner: str) -> str:
+        """
+        Revokuje (deaktivira) bot ID.
+        
+        Args:
+            bot_id: ID bota
+            owner: Vlasnik koji revokuje
+            
+        Returns:
+            Transaction hash
+        """
+        # Konvertuj bot_id u bytes32
+        if bot_id.startswith('0x'):
+            bot_id_bytes = bytes.fromhex(bot_id[2:].ljust(64, '0')[:64])
+        else:
+            bot_id_bytes = bytes.fromhex(bot_id.ljust(64, '0')[:64])
+        
+        # Status 2 = REVOKED
+        tx_hash = self.contract.functions.setStatus(
+            bot_id_bytes,
+            2
+        ).transact({'from': self.w3.to_checksum_address(owner)})
+        
+        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        return tx_hash.hex()
 
 
 # ============================================================================
@@ -416,7 +512,7 @@ class BlockchainVerifier:
 # ============================================================================
 
 def example_usage():
-    """Demonstracija osnovnih funkcionalnosti"""
+    """Demonstracija osnovnih funkcionalnosti sa realnim audio fajlom"""
     
     # 1. Inicijalizuj watermarker
     watermarker = AudioWatermarker(sample_rate=16000, nbits=16)
@@ -424,15 +520,15 @@ def example_usage():
     # 2. Definiši bot ID (ovaj bi bio registrovan na blockchain-u)
     bot_id = "0x1234567890abcdef1234567890abcdef12345678"
     
-    # 3. Ugradi watermark u audio fajl koji generiše bot
+    # 3. Ugradi watermark u postojeći audio fajl
     print("\n=== EMBEDDING WATERMARK ===")
     watermarker.embed_watermark(
-        audio_path="generated_audio.wav",
+        audio_path="1.wav",
         bot_id=bot_id,
-        output_path="watermarked_audio.wav"
+        output_path="1_watermarked.wav"
     )
     
-    # 4. Kasnije, detektuj watermark iz nepoznatog audio fajla
+    # 4. Kasnije, detektuj watermark iz audio fajla
     print("\n=== DETECTING WATERMARK ===")
     
     # Lista svih mogućih bot-ova (ovo bi se dohvatilo sa blockchain-a)
@@ -443,7 +539,7 @@ def example_usage():
     ]
     
     detected_bot, confidence = watermarker.detect_watermark(
-        audio_path="watermarked_audio.wav",
+        audio_path="1_watermarked.wav",
         candidate_bot_ids=all_bot_ids
     )
     
@@ -461,23 +557,7 @@ def example_usage():
         # print(f"  Status: {bot_info['status']}")
 
 
-def example_batch_processing():
-    """Primer procesiranja više fajlova odjednom"""
-    
-    watermarker = AudioWatermarker()
-    bot_id = "0x1234567890abcdef1234567890abcdef12345678"
-    
-    audio_files = [
-        "bot_audio_1.wav",
-        "bot_audio_2.wav",
-        "bot_audio_3.wav"
-    ]
-    
-    watermarker.batch_embed(
-        audio_files=audio_files,
-        bot_id=bot_id,
-        output_dir="watermarked_outputs"
-    )
+
 
 
 if __name__ == "__main__":
