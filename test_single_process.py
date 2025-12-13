@@ -20,16 +20,9 @@ print("="*60)
 # ============================================================================
 print("\n[1/6] Initializing blockchain and deploying contract...")
 
-# Kreiraj eth-tester provider
 w3 = Web3(EthereumTesterProvider())
 deployer = w3.eth.accounts[0]
 
-print(f"✓ Blockchain initialized!")
-print(f"  Chain ID: {w3.eth.chain_id}")
-print(f"  Deployer: {deployer}")
-print(f"  Balance: {w3.eth.get_balance(deployer) / 10**18:,.0f} ETH")
-
-# Kompajliraj i deploy contract
 install_solc('0.8.20')
 
 with open('src/ModelRegistry.sol', 'r', encoding='utf-8') as f:
@@ -52,26 +45,23 @@ tx_hash = ModelRegistry.constructor().transact({'from': deployer})
 tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
 contract_address = tx_receipt['contractAddress']
 
-print(f"✓ Smart contract deployed!")
-print(f"  Address: {contract_address}")
-print(f"  TX Hash: {tx_hash.hex()}")
+print(f"✓ Contract deployed: {contract_address}")
 
 # ============================================================================
 # [2/6] Inicijalizuj verifier sa ISTIM blockchain-om
 # ============================================================================
 print("\n[2/6] Initializing blockchain verifier...")
 
-# KLJUČNO: Koristi isti w3 instance!
 verifier = BlockchainVerifier.__new__(BlockchainVerifier)
 verifier.contract_address = contract_address
 verifier.provider_url = "eth-tester://embedded"
-verifier.w3 = w3  # ← Isti blockchain!
+verifier.w3 = w3
 verifier.contract = w3.eth.contract(
     address=Web3.to_checksum_address(contract_address),
     abi=contract_interface['abi']
 )
 
-print(f"✓ Verifier initialized with same blockchain instance")
+print(f"✓ Verifier initialized")
 
 # ============================================================================
 # [3/6] Registruj bota na blockchain
@@ -89,17 +79,13 @@ tx_hash = verifier.register_bot(
     uri=f"data:application/json,{{\"name\":\"{bot_name}\"}}"
 )
 
-print(f"✓ Bot registered!")
-print(f"  Bot ID: {bot_id}")
-print(f"  TX Hash: {tx_hash}")
-print(f"  Owner: {deployer}")
+print(f"✓ Bot registered: {bot_id}")
 
 # ============================================================================
 # [4/6] Ugradi watermark
 # ============================================================================
 print("\n[4/6] Embedding watermark...")
 
-# Koristi postojeći test audio
 audio_file = "C:\\Users\\doslj\\Desktop\\hakaton\\CryptoMark\\1.wav"
 
 if not os.path.exists(audio_file):
@@ -114,12 +100,11 @@ success = watermarker.embed_watermark(
     output_path='test_single_process_watermarked.wav'
 )
 
-if success:
-    print(f"✓ Watermark embedded!")
-    print(f"  Output: test_single_process_watermarked.wav")
-else:
+if not success:
     print(f"✗ Embedding failed!")
     exit(1)
+
+print(f"✓ Watermark embedded")
 
 # ============================================================================
 # [5/6] Detektuj watermark
@@ -131,39 +116,51 @@ detected_bot, confidence = watermarker.detect_watermark(
     candidate_bot_ids=[bot_id]
 )
 
-if detected_bot:
-    print(f"✓ Watermark detected!")
-    print(f"  Detected Bot ID: {detected_bot}")
-    print(f"  Confidence: {confidence * 100:.1f}%")
-    print(f"  Match: {'YES' if detected_bot == bot_id else 'NO'}")
-else:
-    print(f"✗ No watermark detected!")
+if not detected_bot or detected_bot != bot_id:
+    print(f"✗ Detection failed!")
     exit(1)
 
+print(f"✓ Watermark detected: {confidence * 100:.1f}% confidence")
+
+# Prikaz imena bota iz uri polja na blockchainu
+bot_info = verifier.verify_bot_id(detected_bot)
+bot_name = None
+import json
+if bot_info and bot_info.get('uri'):
+    uri = bot_info['uri']
+    if uri.startswith('data:application/json,'):
+        try:
+            meta = json.loads(uri.split(',', 1)[1])
+            bot_name = meta.get('name')
+        except Exception:
+            pass
+    elif uri.strip().startswith('{'):
+        try:
+            meta = json.loads(uri)
+            bot_name = meta.get('name')
+        except Exception:
+            pass
+if bot_name:
+    print(f"Bot name (from blockchain): {bot_name}")
+else:
+    print(f"Bot name not found in blockchain metadata.")
+
 # ============================================================================
-# [6/6] Verifikuj bota na blockchain-u (SA ISTOG BLOCKCHAIN-A!)
+# [6/6] Verifikuj bota na blockchain-u
 # ============================================================================
 print("\n[6/6] Verifying bot on blockchain...")
 
 bot_info = verifier.verify_bot_id(bot_id)
 
-print(f"✓ Bot verified on blockchain!")
-print(f"  Exists: {bot_info['exists']}")
-print(f"  Owner: {bot_info['owner']}")
-print(f"  Status: {bot_info['status']}")
-print(f"  Created: {bot_info['created_at']}")
-print(f"  URI: {bot_info['uri']}")
-
-# Proveri da li je vlasnik ispravan
-if bot_info['owner'] == deployer and bot_info['status'] == 'ACTIVE':
-    print(f"\n✅ VERIFICATION SUCCESS!")
-else:
-    print(f"\n❌ Verification mismatch!")
+if bot_info['owner'] != deployer or bot_info['status'] != 'ACTIVE':
+    print(f"✗ Verification failed!")
     exit(1)
+
+print(f"✓ Bot verified: {bot_info['status']}")
+if bot_name:
+    print(f"Bot name (from blockchain): {bot_name}")
 
 print("\n" + "="*60)
 print("✅ ALL TESTS PASSED!")
-print("✅ Complete flow working in single process!")
-print("✅ Blockchain verification successful!")
-print(f"✅ Watermarked audio saved: test_single_process_watermarked.wav")
+print("✅ Watermarked audio: test_single_process_watermarked.wav")
 print("="*60)

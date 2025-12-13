@@ -217,12 +217,27 @@ def detect_watermark_endpoint():
         if detected_bot:
             # Dohvati informacije o botu sa blockchain-a
             bot_info = None
+            bot_name = None
             if verifier:
                 try:
                     bot_info = verifier.verify_bot_id(detected_bot)
+                    # Parsiraj ime iz uri polja ako je JSON
+                    if bot_info and bot_info.get('uri'):
+                        uri = bot_info['uri']
+                        if uri.startswith('data:application/json,'):
+                            try:
+                                meta = json.loads(uri.split(',', 1)[1])
+                                bot_name = meta.get('name')
+                            except Exception:
+                                pass
+                        elif uri.strip().startswith('{'):
+                            try:
+                                meta = json.loads(uri)
+                                bot_name = meta.get('name')
+                            except Exception:
+                                pass
                 except Exception as e:
                     print(f"Warning: Could not verify bot on blockchain: {e}")
-            
             return jsonify({
                 'detected': True,
                 'bot_id': detected_bot,
@@ -232,7 +247,8 @@ def detect_watermark_endpoint():
                     'status': bot_info['status'] if bot_info else 'unknown',
                     'registered_at': bot_info['created_at'] if bot_info else None,
                     'uri': bot_info['uri'] if bot_info else None,
-                    'exists': bot_info['exists'] if bot_info else False
+                    'exists': bot_info['exists'] if bot_info else False,
+                    'name': bot_name
                 },
                 'timestamp': datetime.utcnow().isoformat()
             })
@@ -276,13 +292,30 @@ def verify_bot_endpoint():
         except Exception as e:
             return jsonify({'error': f'Blockchain verification failed: {str(e)}'}), 500
         
+        # Parsiraj ime iz uri polja ako je JSON
+        bot_name = None
+        if bot_info and bot_info.get('uri'):
+            uri = bot_info['uri']
+            if uri.startswith('data:application/json,'):
+                try:
+                    meta = json.loads(uri.split(',', 1)[1])
+                    bot_name = meta.get('name')
+                except Exception:
+                    pass
+            elif uri.strip().startswith('{'):
+                try:
+                    meta = json.loads(uri)
+                    bot_name = meta.get('name')
+                except Exception:
+                    pass
         return jsonify({
             'bot_id': bot_id,
             'exists': bot_info['exists'],
             'owner': bot_info['owner'],
             'status': bot_info['status'],
             'created_at': bot_info['created_at'],
-            'uri': bot_info['uri']
+            'uri': bot_info['uri'],
+            'name': bot_name
         })
         
     except Exception as e:
