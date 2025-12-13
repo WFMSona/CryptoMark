@@ -3,124 +3,139 @@ Deploy script sa pravim lokalnim blockchain-om (eth-tester)
 Koristi Python EVM simulator za potpunu blockchain funkcionalnost
 """
 
-from web3 import Web3, EthereumTesterProvider
-from solcx import compile_source, install_solc
-import json
-import os
+def deploy_contract(provider_url=None):
+    from web3 import Web3, EthereumTesterProvider
+    from solcx import compile_source, install_solc
+    import json
+    import os
 
-print("="*60)
-print("CryptoMark - Real Blockchain Deployment")
-print("Using eth-tester (Python EVM)")
-print("="*60)
+    # Dodaj podršku za provider_url (default Ganache)
+    if provider_url is None:
+        provider_url = os.environ.get("PROVIDER_URL", "http://127.0.0.1:8545")
 
-# Instalacija solidity compiler
-print("\n[1/4] Installing Solidity compiler...")
-try:
-    install_solc('0.8.20')
-    print("✓ Solidity 0.8.20 installed")
-except:
-    print("✓ Solidity already installed")
+    print("="*60)
+    print("CryptoMark - Real Blockchain Deployment")
+    print(f"Using provider: {provider_url}")
+    print("="*60)
 
-# Čitanje contract source-a
-print("\n[2/4] Reading and compiling contract...")
-with open('src/ModelRegistry.sol', 'r', encoding='utf-8') as file:
-    contract_source = file.read()
+    # Instalacija solidity compiler
+    print("\n[1/4] Installing Solidity compiler...")
+    try:
+        install_solc('0.8.20')
+        print("✓ Solidity 0.8.20 installed")
+    except:
+        print("✓ Solidity already installed")
 
-# Kompajliranje
-compiled_sol = compile_source(
-    contract_source,
-    output_values=['abi', 'bin'],
-    solc_version='0.8.20'
-)
+    # Čitanje contract source-a
+    print("\n[2/4] Reading and compiling contract...")
+    with open('src/ModelRegistry.sol', 'r', encoding='utf-8') as file:
+        contract_source = file.read()
 
-contract_id, contract_interface = compiled_sol.popitem()
-abi = contract_interface['abi']
-bytecode = contract_interface['bin']
-print("✓ Contract compiled successfully")
+    # Kompajliranje
+    compiled_sol = compile_source(
+        contract_source,
+        output_values=['abi', 'bin'],
+        solc_version='0.8.20'
+    )
 
-# Pokreni EVM provider (lokalni blockchain)
-print("\n[3/4] Starting local blockchain (EVM)...")
-w3 = Web3(EthereumTesterProvider())
+    contract_id, contract_interface = compiled_sol.popitem()
+    abi = contract_interface['abi']
+    bytecode = contract_interface['bin']
+    print("✓ Contract compiled successfully")
 
-if not w3.is_connected():
-    raise Exception("Failed to initialize blockchain!")
+    # Pokreni EVM provider (Ganache ili eth-tester)
+    print("\n[3/4] Starting blockchain provider...")
+    if provider_url == "eth-tester://embedded":
+        w3 = Web3(EthereumTesterProvider())
+    else:
+        w3 = Web3(Web3.HTTPProvider(provider_url))
 
-print(f"✓ Blockchain running")
-print(f"  Chain ID: {w3.eth.chain_id}")
+    if not w3.is_connected():
+        raise Exception(f"Failed to initialize blockchain at {provider_url}!")
 
-# Dohvati test accounts
-accounts = w3.eth.accounts
-deployer = accounts[0]
-print(f"  Deployer account: {deployer}")
-print(f"  Balance: {w3.eth.get_balance(deployer) / 10**18:.2f} ETH")
+    print(f"✓ Blockchain running")
+    print(f"  Chain ID: {w3.eth.chain_id}")
 
-# Deploy contract
-print("\n[4/4] Deploying ModelRegistry contract...")
-ModelRegistry = w3.eth.contract(abi=abi, bytecode=bytecode)
+    # Dohvati test accounts
+    accounts = w3.eth.accounts
+    deployer = accounts[0]
+    print(f"  Deployer account: {deployer}")
+    print(f"  Balance: {w3.eth.get_balance(deployer) / 10**18:.2f} ETH")
 
-tx_hash = ModelRegistry.constructor().transact({'from': deployer})
-tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    # Deploy contract
+    print("\n[4/4] Deploying ModelRegistry contract...")
+    ModelRegistry = w3.eth.contract(abi=abi, bytecode=bytecode)
 
-contract_address = tx_receipt.contractAddress
-print(f"✓ Contract deployed!")
-print(f"  Address: {contract_address}")
-print(f"  Gas used: {tx_receipt.gasUsed}")
+    tx_hash = ModelRegistry.constructor().transact({'from': deployer})
+    tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
 
-# Testiranje contract-a
-print("\n[5/5] Testing contract...")
-contract = w3.eth.contract(address=contract_address, abi=abi)
+    contract_address = tx_receipt.contractAddress
+    print(f"✓ Contract deployed!")
+    print(f"  Address: {contract_address}")
+    print(f"  Gas used: {tx_receipt.gasUsed}")
 
-# Test konstanti
-active = contract.functions.ACTIVE().call()
-revoked = contract.functions.REVOKED().call()
-print(f"  ACTIVE constant: {active}")
-print(f"  REVOKED constant: {revoked}")
+    # Testiranje contract-a
+    print("\n[5/5] Testing contract...")
+    contract = w3.eth.contract(address=contract_address, abi=abi)
 
-# Test registracije bota
-test_bot_id = bytes.fromhex('1234567890abcdef1234567890abcdef12345678000000000000000000000000')
-test_hash = bytes(32)
-test_uri = "ipfs://QmTest"
+    # Test konstanti
+    active = contract.functions.ACTIVE().call()
+    revoked = contract.functions.REVOKED().call()
+    print(f"  ACTIVE constant: {active}")
+    print(f"  REVOKED constant: {revoked}")
 
-tx_hash = contract.functions.registerModel(
-    test_bot_id,
-    test_hash,
-    test_uri
-).transact({'from': deployer})
+    # Test registracije bota
+    test_bot_id = bytes.fromhex('1234567890abcdef1234567890abcdef12345678000000000000000000000000')
+    test_hash = bytes(32)
+    test_uri = "ipfs://QmTest"
 
-receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-print(f"✓ Test bot registered (tx: {tx_hash.hex()[:10]}...)")
+    tx_hash = contract.functions.registerModel(
+        test_bot_id,
+        test_hash,
+        test_uri
+    ).transact({'from': deployer})
 
-# Verifikuj registraciju
-model = contract.functions.getModel(test_bot_id).call()
-print(f"  Owner: {model[0]}")
-print(f"  Status: {'ACTIVE' if model[1] == 1 else 'REVOKED'}")
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    print(f"✓ Test bot registered (tx: {tx_hash.hex()[:10]}...)")
 
-# Sačuvaj deployment info
-deployment_info = {
-    'contract_address': contract_address,
-    'deployer': deployer,
-    'chain_id': w3.eth.chain_id,
-    'provider_url': 'eth-tester://embedded',
-    'tx_hash': tx_hash.hex(),
-    'abi': abi,
-    'blockchain_type': 'eth-tester',
-    'accounts': accounts[:5]  # Prvi 5 test naloga
-}
+    # Verifikuj registraciju
+    model = contract.functions.getModel(test_bot_id).call()
+    print(f"  Owner: {model[0]}")
+    print(f"  Status: {'ACTIVE' if model[1] == 1 else 'REVOKED'}")
 
-with open('deployment_info.json', 'w') as f:
-    json.dump(deployment_info, f, indent=2)
+    # Sačuvaj deployment info
+    deployment_info = {
+        'contract_address': contract_address,
+        'deployer': deployer,
+        'chain_id': w3.eth.chain_id,
+        'provider_url': provider_url,
+        'tx_hash': tx_hash.hex(),
+        'abi': abi,
+        'blockchain_type': 'ganache' if provider_url != "eth-tester://embedded" else 'eth-tester',
+        'accounts': accounts[:5]  # Prvi 5 test naloga
+    }
 
-print("\n" + "="*60)
-print("✓ Deployment completed successfully!")
-print("="*60)
-print("\nDeployment info saved to: deployment_info.json")
-print("\nTest accounts available:")
-for i, acc in enumerate(accounts[:3]):
-    balance = w3.eth.get_balance(acc) / 10**18
-    print(f"  {i+1}. {acc} ({balance:.2f} ETH)")
+    with open('deployment_info.json', 'w') as f:
+        json.dump(deployment_info, f, indent=2)
 
-print("\n✓ Real blockchain is ready!")
-print("  - Smart contract deployed and tested")
-print("  - All functions verified")
-print("  - Test registration successful")
-print("\nRestart API to use real blockchain!")
+    # Save ABI to a separate file for easier access in other scripts
+    with open('ModelRegistry.abi.json', 'w') as f:
+        json.dump(abi, f, indent=2)
+
+    print("\n" + "="*60)
+    print("✓ Deployment completed successfully!")
+    print("="*60)
+    print("\nDeployment info saved to: deployment_info.json")
+    print("\nTest accounts available:")
+    for i, acc in enumerate(accounts[:3]):
+        balance = w3.eth.get_balance(acc) / 10**18
+        print(f"  {i+1}. {acc} ({balance:.2f} ETH)")
+
+    print("\n✓ Real blockchain is ready!")
+    print("  - Smart contract deployed and tested")
+    print("  - All functions verified")
+    print("  - Test registration successful")
+    print("="*60 + "\n")
+
+if __name__ == "__main__":
+    deploy_contract()

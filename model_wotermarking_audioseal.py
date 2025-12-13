@@ -209,6 +209,9 @@ class BlockchainVerifier:
         """
         # Try using w3.eth.get_logs directly
         event_signature = self.w3.keccak(text="ModelRegistered(bytes32,address,bytes32)").hex()
+        # Dodaj "0x" prefix ako ga nema
+        if not event_signature.startswith("0x"):
+            event_signature = "0x" + event_signature
         logs = self.w3.eth.get_logs({
             'fromBlock': 0,
             'toBlock': 'latest',
@@ -224,7 +227,7 @@ class BlockchainVerifier:
             bot_ids.append(bot_id_hex)
         return bot_ids
 
-    def __init__(self, contract_address: str, provider_url: str, abi: list = None, w3=None):
+    def __init__(self, contract_address: str, provider_url: str, abi: list = None, w3=None, account: str = None):
         from web3 import Web3
         import json
         
@@ -258,15 +261,26 @@ class BlockchainVerifier:
             address=Web3.to_checksum_address(contract_address),
             abi=abi
         )
+
+        # Dodaj account atribut
+        if account is not None:
+            self.account = account
+        else:
+            # Uzmi prvi nalog iz w3.eth.accounts
+            self.account = self.w3.eth.accounts[0]
         
 
     
-    def register_bot(self, bot_id: str, owner: str, wm_spec_hash: str = None, uri: str = "") -> str:
-        # Konvertuj bot_id u bytes32
-        if bot_id.startswith('0x'):
-            bot_id_bytes = bytes.fromhex(bot_id[2:].ljust(64, '0')[:64])
-        else:
+    def register_bot(self, bot_id, uri, desc):
+        wm_spec_hash = None  # ili kako već imate
+        # Ensure bot_id is 32 bytes, using utf-8 encoding if not hex
+        try:
+            # Try to interpret as hex string
             bot_id_bytes = bytes.fromhex(bot_id.ljust(64, '0')[:64])
+        except ValueError:
+            # Fallback: encode as utf-8 and pad/truncate to 32 bytes
+            bot_id_bytes = bot_id.encode('utf-8')
+            bot_id_bytes = bot_id_bytes.ljust(32, b'\0')[:32]
         
 
         
@@ -276,6 +290,8 @@ class BlockchainVerifier:
         elif isinstance(wm_spec_hash, str):
             wm_spec_hash = bytes.fromhex(wm_spec_hash.replace('0x', '').ljust(64, '0')[:64])
         
+        owner = self.account  # ili self.deployer, ili kako već čuvate svoj account
+
         tx_hash = self.contract.functions.registerModel(
             bot_id_bytes,
             wm_spec_hash,

@@ -1,9 +1,9 @@
 {
-  "contract_address": "0xF2E246BB76DF876Cef8b38ae84130F4F55De395b",
-  "deployer": "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
-  "chain_id": 131277322940537,
-  "provider_url": "eth-tester://embedded",
-  "tx_hash": "2f8d60438d6123e14365e5858cf7096eefd973ca16a5e64eb7520c43bdf7836b",
+  "contract_address": "0xDD18BC0AB96b6e0eC2761BAfd66EB86a8d2CEe18",
+  "deployer": "0xe083ef574fcB1d38863A38C57B428A5C3AB88C08",
+  "chain_id": 1337,
+  "provider_url": "http://127.0.0.1:8545",
+  "tx_hash": "f761b21271d9efeca3b9b9643029313390aeb0db7e1cdc124f0c06864dce594d",
   "abi": [
     {
       "anonymous": false,
@@ -202,12 +202,12 @@
       "type": "function"
     }
   ],
-  "blockchain_type": "eth-tester",
+  "blockchain_type": "ganache",
   "accounts": [
-    "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf",
-    "0x2B5AD5c4795c026514f8317c7a215E218DcCD6cF",
-    "0x6813Eb9362372EEF6200f3b1dbC3f819671cBA69",
-    "0x1efF47bc3a10a45D4B230B5d10E37751FE6AA718",
-    "0xe1AB8145F7E55DC933d51a18c793F901A3A0b276"
+    "0xe083ef574fcB1d38863A38C57B428A5C3AB88C08",
+    "0xCd4267f23cFecFD416E595420b78B38d6dc4155c",
+    "0x9A770A8f682c56859669fe9Ef5e48B17FAEF95cc",
+    "0x001c95A02704564a0870220e7d57249F027C395E",
+    "0x52D7bA1f3D755d930fAAc938648396f325d63263"
   ]
 }
