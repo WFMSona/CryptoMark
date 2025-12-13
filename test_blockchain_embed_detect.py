@@ -35,9 +35,9 @@ ModelRegistry = w3.eth.contract(abi=abi, bytecode=bytecode)
 tx_hash = ModelRegistry.constructor().transact({'from': acct})
 tx_receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
 contract_address = tx_receipt.contractAddress
-print(f"Deployment tx receipt: {tx_receipt}")
+
 w3.provider.ethereum_tester.mine_blocks()  # Mine deployment block
-print(f"Block after deployment: {w3.eth.block_number}")
+print(f"Contract deployed at: {contract_address}")
 
 # Inicijalizuj BlockchainVerifier sa pravim ABI i adresom
 verifier = BlockchainVerifier(
@@ -56,7 +56,6 @@ def ensure_bot_registered(verifier, bot_name, owner):
     all_bot_ids = verifier.get_all_registered_bots()
     for candidate_id in all_bot_ids:
         info = verifier.verify_bot_id(candidate_id)
-        # Parsiraj ime iz uri polja
         bot_name_on_chain = None
         if info and info.get('uri'):
             uri = info['uri']
@@ -74,7 +73,7 @@ def ensure_bot_registered(verifier, bot_name, owner):
                 except Exception:
                     pass
         if bot_name_on_chain == bot_name and info['exists'] and info['status'] == 'ACTIVE':
-            print(f"Bot '{bot_name}' već registrovan na blockchainu.")
+            print(f"Bot '{bot_name}' je već registrovan.")
             return candidate_id
     # Ako nije, registruj
     from datetime import datetime
@@ -88,20 +87,9 @@ def ensure_bot_registered(verifier, bot_name, owner):
         wm_spec_hash=None,
         uri=f"data:application/json,{{\"name\":\"{bot_name}\"}}"
     )
-    print(f"Bot '{bot_name}' registrovan na blockchainu sa bot_id: {bot_id}")
     verifier.w3.provider.ethereum_tester.mine_blocks()
-    import time
-    time.sleep(0.2)  # kratak sleep za svaki slucaj
-    print(f"Current block after mine: {verifier.w3.eth.block_number}")
-    # Debug: proveri direktno verify_bot_id
-    info = verifier.verify_bot_id(bot_id)
-    print(f"DEBUG: Direct verify_bot_id for {bot_id}: {info}")
-    # Debug: proveri da li je bot sada ACTIVE
-    all_bot_ids = verifier.get_all_registered_bots()
-    print(f"DEBUG: Svi bot_id na chainu: {all_bot_ids}")
-    for candidate_id in all_bot_ids:
-        info = verifier.verify_bot_id(candidate_id)
-        print(f"DEBUG: {candidate_id} -> {info}")
+    time.sleep(0.2)
+    print(f"Bot '{bot_name}' registrovan.")
     return bot_id
 
 # Pronađi owner adresu (prvi account na test chainu)
@@ -109,22 +97,41 @@ owner = verifier.w3.eth.accounts[0]
 ensure_bot_registered(verifier, BOT_NAME, owner)
 
 # 1. Embeduj watermark
+
+
 print(f"\n--- EMBED ---")
 embed_success = embed_audio_blockchain(INPUT_WAV, BOT_NAME, OUTPUT_WAV, verifier)
-if not embed_success:
-    print("Embedovanje nije uspelo!")
+if embed_success:
+    print(f"Watermark embedovan za bota '{BOT_NAME}' u {OUTPUT_WAV}")
+else:
+    print(f"Embedovanje nije uspelo!")
     sys.exit(1)
-print(f"Watermark embedovan u {OUTPUT_WAV}")
 
 # 2. Detekcija watermarka
+
 print(f"\n--- DETECT ---")
 bot_id, confidence, bot_info = detect_audio_blockchain(OUTPUT_WAV, verifier)
 if not bot_id:
     print("Detekcija nije uspela!")
     sys.exit(1)
-print(f"Detektovan bot_id: {bot_id}")
-print(f"Confidence: {confidence:.2%}")
-if bot_info:
-    print(f"Bot info: {bot_info}")
+ime_bota = None
+if bot_info and bot_info.get('uri'):
+    uri = bot_info['uri']
+    import json
+    if uri.startswith('data:application/json,'):
+        try:
+            meta = json.loads(uri.split(',', 1)[1])
+            ime_bota = meta.get('name')
+        except Exception:
+            pass
+    elif uri.strip().startswith('{'):
+        try:
+            meta = json.loads(uri)
+            ime_bota = meta.get('name')
+        except Exception:
+            pass
+if ime_bota:
+    print(f"Detektovan bot: {ime_bota}")
 else:
-    print("Nema informacija o botu sa blockchaina.")
+    print(f"Detektovan bot_id: {bot_id}")
+print(f"Confidence: {confidence:.2%}")

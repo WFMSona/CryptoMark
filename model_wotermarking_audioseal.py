@@ -268,7 +268,7 @@ class BlockchainVerifier:
         else:
             bot_id_bytes = bytes.fromhex(bot_id.ljust(64, '0')[:64])
         
-        print(f"DEBUG: register_bot bot_id_bytes: {bot_id_bytes.hex()}")
+
         
         # Default wm_spec_hash ako nije prosleđen
         if wm_spec_hash is None:
@@ -282,7 +282,7 @@ class BlockchainVerifier:
             uri
         ).transact({'from': self.w3.to_checksum_address(owner)})
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
-        print(f"DEBUG: Transaction receipt: {receipt}")
+
         return tx_hash.hex()
     
     def verify_bot_id(self, bot_id: str) -> dict:
@@ -292,7 +292,7 @@ class BlockchainVerifier:
         else:
             bot_id_bytes = bytes.fromhex(bot_id.ljust(64, '0')[:64])
         
-        print(f"DEBUG: verify_bot_id bot_id_bytes: {bot_id_bytes.hex()}")
+
         
         try:
             model = self.contract.functions.getModel(bot_id_bytes).call()
