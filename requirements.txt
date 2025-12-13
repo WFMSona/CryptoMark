@@ -1,0 +1,6 @@
+torch>=2.0.0
+torchaudio>=2.0.0
+audioseal>=0.1.0
+numpy>=1.21.0
+web3>=6.0.0
+flask>=2.3.0
