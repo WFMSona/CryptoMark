@@ -204,6 +204,19 @@ class AudioWatermarker:
 
 
 class BlockchainVerifier:
+    def get_all_registered_bots(self) -> list:
+        """
+        Dohvata sve registrovane bot_id sa blockchaina koristeći ModelRegistered event.
+        Returns: lista bot_id (hex string)
+        """
+        events = self.contract.events.ModelRegistered.get_logs(fromBlock=0)
+        bot_ids = []
+        for event in events:
+            model_id = event['args']['modelId']
+            bot_id_hex = '0x' + model_id.hex()
+            bot_ids.append(bot_id_hex)
+        return bot_ids
+
     def __init__(self, contract_address: str, provider_url: str, abi: list = None):
         from web3 import Web3
         import json

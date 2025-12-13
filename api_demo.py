@@ -115,30 +115,47 @@ def embed_watermark_endpoint():
         if not bot_id.startswith('0x') or len(bot_id) != 42:
             return jsonify({'error': 'Invalid bot_id format (expected 0x + 40 hex chars)'}), 400
         
-        # Verifikuj da je bot registrovan na blockchain-u (opciono za embed)
-        # Za real-world, ovde bi proverili blockchain
-        # Za demo, prihvatamo sve bot_id-eve
-        if verifier and blockchain_enabled:
-            print(f"  Note: Bot verification skipped for embed (accept all)")
+        # OBAVEZNA VERIFIKACIJA bot_id-a na blockchainu
+        if not verifier or not blockchain_enabled:
+            return jsonify({'error': 'Blockchain verifier not available'}), 503
+        bot_info = verifier.verify_bot_id(bot_id)
+        if not bot_info['exists'] or bot_info['status'] != 'ACTIVE':
+            return jsonify({'error': 'Bot ID is not registered or not active on blockchain'}), 403
         
-        # Sačuvaj privremeno input fajl
+        # Audio ingest: podrška za MP3/WAV/razne sample-rate-ove
+        from pydub import AudioSegment
+        import io
+        # Učitaj audio iz requesta (bilo koji format koji pydub/ffmpeg podržava)
+        audio_bytes = audio_file.read()
+        try:
+            audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+        except Exception as e:
+            return jsonify({'error': f'Unsupported or corrupted audio file: {str(e)}'}), 400
+
+        # Konvertuj u mono, 16kHz, 16-bit WAV
+        audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
+
+        # Normalizuj glasnoću (opciono, -1 dBFS)
+        audio = audio.apply_gain(-1.0 - audio.max_dBFS)
+
+        # Sačuvaj kao privremeni WAV
         with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_input:
-            audio_file.save(tmp_input.name)
             input_path = tmp_input.name
-        
+            audio.export(input_path, format='wav')
+
         # Output fajl
         output_path = tempfile.mktemp(suffix='.wav')
-        
+
         # Ugradi watermark
         success = watermarker.embed_watermark(
             audio_path=input_path,
             bot_id=bot_id,
             output_path=output_path
         )
-        
+
         if not success:
             return jsonify({'error': 'Failed to embed watermark'}), 500
-        
+
         # Vrati watermarked fajl
         response = send_file(
             output_path,
@@ -146,7 +163,7 @@ def embed_watermark_endpoint():
             as_attachment=True,
             download_name=f'watermarked_{audio_file.filename}'
         )
-        
+
         # Cleanup će se desiti nakon slanja
         @response.call_on_close
         def cleanup():
@@ -155,7 +172,7 @@ def embed_watermark_endpoint():
                 os.unlink(output_path)
             except:
                 pass
-        
+
         return response
         
     except Exception as e:
@@ -190,21 +207,16 @@ def detect_watermark_endpoint():
             audio_file.save(tmp.name)
             audio_path = tmp.name
         
-        # Dohvati sve registrovane bot ID-eve
-        registered_bots = load_registered_bots()
-        all_bot_ids = [bot['bot_id'] for bot in registered_bots]
-        
+        # Dohvati sve registrovane bot_id direktno sa blockchaina
+        all_bot_ids = []
+        if verifier:
+            try:
+                all_bot_ids = verifier.get_all_registered_bots()
+            except Exception as e:
+                print(f"Warning: Could not fetch bot list from blockchain: {e}")
         if not all_bot_ids:
-            # Fallback na test ID-eve ako nema registrovanih
-            all_bot_ids = [
-                "0x1234567890abcdef1234567890abcdef12345678",
-                "0xabcdef1234567890abcdef1234567890abcdef12",
-                "0x9876543210fedcba9876543210fedcba98765432"
-            ]
-            print(f"  Using fallback candidate list ({len(all_bot_ids)} bots)")
-        else:
-            print(f"  Using registered bots as candidates ({len(all_bot_ids)} bots)")
-        
+            return jsonify({'error': 'No registered bots found on blockchain'}), 404
+
         # Detektuj watermark
         detected_bot, confidence = watermarker.detect_watermark(
             audio_path=audio_path,
